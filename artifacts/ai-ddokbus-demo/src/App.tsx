@@ -590,8 +590,8 @@ function Home() {
               </button>
               <div className="hidden h-9 w-px bg-[hsl(var(--border))] sm:block" />
               <div className="hidden items-center gap-2 sm:flex">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[hsl(var(--accent))] text-xs font-black text-[hsl(var(--accent-foreground))]">김</div>
-                <span className="text-xs font-bold">운영자 김서윤</span>
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[hsl(var(--accent))] text-xs font-black text-[hsl(var(--accent-foreground))]">조</div>
+                <span className="text-xs font-bold">운영자 조연재</span>
                 <ChevronDown size={14} className="text-[hsl(var(--muted-foreground))]" />
               </div>
             </div>

@@ -445,6 +445,7 @@ test.describe('administrator recovery', () => {
 
     await page.getByRole('button', { name: '관리자 모드' }).first().click();
     await expect(page.getByRole('heading', { name: 'AI 관제센터' })).toBeVisible();
+    await expect(page.getByText('운영자 조연재')).toBeVisible();
     await page.getByRole('button', { name: '인식 실패 케이스 확인' }).click();
 
     const dialog = page.getByRole('dialog', {
