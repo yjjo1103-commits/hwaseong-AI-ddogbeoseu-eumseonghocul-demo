@@ -85,6 +85,74 @@ type PaymentMethod = 'cash' | 'app';
 type CallStage = 'intro' | 'listening' | 'confirm' | 'approval';
 type ListeningPurpose = 'destination' | 'approval';
 
+const startupScreens = [
+  {
+    src: `${import.meta.env.BASE_URL}onboarding/home.png`,
+    alt: '똑버스 첫 화면',
+  },
+  {
+    src: `${import.meta.env.BASE_URL}onboarding/guide-route.png`,
+    alt: '서비스 지역 안내 화면',
+  },
+  {
+    src: `${import.meta.env.BASE_URL}onboarding/guide-stop.png`,
+    alt: '정류장 안내 화면',
+  },
+  {
+    src: `${import.meta.env.BASE_URL}onboarding/guide-shared-route.png`,
+    alt: '비슷한 경로 안내 화면',
+  },
+] as const;
+
+function StartupSequence({ onComplete }: { onComplete: () => void }) {
+  const [screenIndex, setScreenIndex] = useState(0);
+  const isFirstScreen = screenIndex === 0;
+  const isLastScreen = screenIndex === startupScreens.length - 1;
+  const screen = startupScreens[screenIndex];
+
+  const goNext = () => {
+    if (isLastScreen) {
+      onComplete();
+      return;
+    }
+    setScreenIndex((current) => current + 1);
+  };
+
+  return (
+    <main className="startup-sequence" aria-label="똑버스 시작 안내">
+      <div className="startup-screen">
+        <img className="startup-screen-image" src={screen.src} alt={screen.alt} />
+        <button
+          type="button"
+          className={`startup-next-hitbox ${isFirstScreen ? 'startup-next-hitbox-first' : ''}`}
+          onClick={goNext}
+          aria-label={
+            isFirstScreen
+              ? '다음 시작 화면'
+              : isLastScreen
+                ? '똑버스 시작하기'
+                : '다음'
+          }
+        >
+          <span className="sr-only">
+            {isFirstScreen ? '다음 시작 화면' : isLastScreen ? '시작하기' : '다음'}
+          </span>
+        </button>
+        {!isFirstScreen && (
+          <button
+            type="button"
+            className="startup-skip-hitbox"
+            onClick={onComplete}
+            aria-label="건너뛰기"
+          >
+            <span className="sr-only">건너뛰기</span>
+          </button>
+        )}
+      </div>
+    </main>
+  );
+}
+
 function Home() {
   const [mode, setMode] = useState<'user' | 'admin'>('user');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -1116,13 +1184,17 @@ function InterventionDialog({ onClose, onConnect }: { onClose: () => void; onCon
 }
 
 function Router() {
+  const [showStartup, setShowStartup] = useState(true);
   return (
-    <RoutedErrorBoundary>
-      <Switch>
-        <Route path="/" component={Home} />
-        <Route component={NotFound} />
-      </Switch>
-    </RoutedErrorBoundary>
+    <>
+      {showStartup && <StartupSequence onComplete={() => setShowStartup(false)} />}
+      <RoutedErrorBoundary>
+        <Switch>
+          <Route path="/" component={Home} />
+          <Route component={NotFound} />
+        </Switch>
+      </RoutedErrorBoundary>
+    </>
   );
 }
 

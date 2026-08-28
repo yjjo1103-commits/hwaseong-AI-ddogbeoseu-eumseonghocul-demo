@@ -454,6 +454,62 @@
   }
 }
 
+.startup-sequence {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  background: #fff;
+}
+
+.startup-screen {
+  position: relative;
+  width: min(100vw, 472px);
+  height: 100dvh;
+  overflow: hidden;
+  background: #fff;
+}
+
+.startup-screen-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.startup-next-hitbox,
+.startup-skip-hitbox {
+  position: absolute;
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.startup-next-hitbox {
+  right: 15px;
+  bottom: 0;
+  left: 15px;
+  height: 64px;
+}
+
+.startup-next-hitbox-first {
+  inset: 0;
+  height: auto;
+}
+
+.startup-skip-hitbox {
+  top: 14px;
+  right: 13px;
+  width: 86px;
+  height: 48px;
+}
+
 .app-noise::after {
   content: "";
   position: fixed;

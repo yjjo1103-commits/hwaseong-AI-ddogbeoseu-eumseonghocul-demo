@@ -18,3 +18,7 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[nix]
+channel = "stable-25_05"
+packages = ["glib", "nspr", "nss", "dbus", "atk", "at-spi2-atk", "at-spi2-core", "cups", "xorg.libxcb", "libxkbcommon", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "mesa", "cairo", "pango", "alsa-lib", "gtk3", "flite", "libwebp", "libavif", "harfbuzz", "libepoxy", "libjpeg", "enchant2", "libsecret", "hyphen", "wayland", "libmanette", "libdrm", "x264", "libgbm", "gst_all_1.gstreamer", "gst_all_1.gst-plugins-base", "gst_all_1.gst-plugins-good", "gst_all_1.gst-plugins-bad", "gtk4", "vulkan-loader", "graphene", "icu74", "libgcc", "libxml2", "sqlite", "libxslt", "lcms2", "woff2", "libvpx", "libevent", "libopus", "libjpeg_turbo", "harfbuzzFull", "libglvnd", "gst_all_1.gst-libav", "libjpeg8"]
