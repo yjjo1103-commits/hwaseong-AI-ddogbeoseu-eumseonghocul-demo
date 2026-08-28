@@ -489,3 +489,64 @@
   70% { box-shadow: 0 0 0 16px hsl(183 57% 67% / 0); }
   100% { box-shadow: 0 0 0 0 hsl(183 57% 67% / 0); }
 }
+
+.map-surface {
+  background:
+    linear-gradient(30deg, transparent 0 38%, rgba(255,255,255,.62) 38% 39%, transparent 39% 100%),
+    linear-gradient(150deg, transparent 0 54%, rgba(255,255,255,.66) 54% 55%, transparent 55% 100%),
+    linear-gradient(90deg, rgba(255,255,255,.45) 1px, transparent 1px),
+    linear-gradient(rgba(255,255,255,.45) 1px, transparent 1px),
+    #dcebdc;
+  background-size: 180px 160px, 210px 180px, 28px 28px, 28px 28px;
+}
+
+.map-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 46% 42%, rgba(255,255,255,.12), transparent 38%);
+  pointer-events: none;
+}
+
+.map-road {
+  position: absolute;
+  z-index: 1;
+  height: 10px;
+  border: 2px solid rgba(255,255,255,.84);
+  border-radius: 999px;
+  background: #c8d8e6;
+  box-shadow: 0 0 0 1px rgba(173,192,207,.25);
+}
+
+.map-road-one { left: -10%; top: 48%; width: 72%; transform: rotate(18deg); }
+.map-road-two { left: 31%; top: 25%; width: 83%; transform: rotate(-24deg); }
+.map-road-three { left: 16%; top: 71%; width: 96%; transform: rotate(-5deg); }
+.map-road-four { left: 53%; top: -10%; width: 14%; height: 130%; transform: rotate(14deg); }
+.map-park { position: absolute; z-index: 0; border-radius: 32% 62% 48% 26%; background: #b7dfbd; opacity: .7; }
+.map-park-one { left: 7%; top: 13%; width: 27%; height: 23%; transform: rotate(14deg); }
+.map-park-two { right: 2%; bottom: 6%; width: 33%; height: 22%; transform: rotate(-11deg); }
+.map-label { position: absolute; z-index: 2; color: #5d7180; font-size: 8px; font-weight: 800; letter-spacing: -.04em; }
+.map-label-one { left: 13%; top: 34%; }
+.map-label-two { left: 20%; bottom: 17%; }
+.map-label-three { right: 12%; top: 53%; }
+.map-pin { position: absolute; z-index: 5; left: 48%; top: 50%; transform: translate(-50%, -50%); }
+.map-pin-bubble { display: flex; align-items: center; gap: 5px; white-space: nowrap; border-radius: 999px; background: #173d9a; padding: 7px 11px; color: white; font-size: 11px; font-weight: 800; box-shadow: 0 5px 14px rgba(23,61,154,.2); }
+.map-pin-dot { display: flex; width: 34px; height: 34px; margin: 5px auto 0; align-items: center; justify-content: center; border: 5px solid white; border-radius: 50%; color: #2563eb; background: #2563eb; box-shadow: 0 3px 8px rgba(23,61,154,.22); }
+.map-pin-dot svg { color: white; stroke-width: 1.7; }
+.bus-thumbnail, .bus-mini-icon { display: flex; align-items: center; justify-content: center; color: #2563eb; background: #dbeafe; }
+.bus-thumbnail { width: 54px; height: 42px; border-radius: 13px; }
+.bus-mini-icon { width: 48px; height: 40px; border-radius: 13px; }
+.mobile-frame { max-height: calc(100dvh - 150px); }
+.bottom-sheet { max-height: calc(100dvh - 420px); min-height: 260px; overflow-y: auto; }
+.voice-listening { animation: voice-listening 1.55s ease-in-out infinite; }
+@keyframes voice-listening {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37,99,235,.2); }
+  50% { box-shadow: 0 0 0 7px rgba(37,99,235,.1), 0 8px 20px rgba(37,99,235,.18); }
+}
+.listening-dot { width: 8px; height: 8px; border-radius: 50%; background: #2563eb; box-shadow: 0 0 0 5px rgba(37,99,235,.12); animation: listening-dot 1s ease-in-out infinite; }
+@keyframes listening-dot { 0%, 100% { transform: scale(.8); opacity: .55; } 50% { transform: scale(1.1); opacity: 1; } }
+.booking-panel, .payment-panel { color: #0f172a; }
+@media (max-width: 640px) {
+  .mobile-frame { border-width: 5px; border-radius: 28px; max-height: none; }
+  .bottom-sheet { max-height: none; }
+}
