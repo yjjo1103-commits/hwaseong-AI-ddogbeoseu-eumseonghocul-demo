@@ -1,0 +1,1 @@
+- [브라우저 음성 API 테스트](browser-speech-api-testing.md) — 자동화 스텁의 이벤트 순서는 실제 Web Speech API와 다를 수 있으므로 세션 무효화와 늦은 이벤트 방어가 필요하다.

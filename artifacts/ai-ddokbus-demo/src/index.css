@@ -490,6 +490,51 @@
   100% { box-shadow: 0 0 0 0 hsl(183 57% 67% / 0); }
 }
 
+.voice-call-modal {
+  animation: call-modal-in .28s ease-out both;
+}
+.voice-call-panel {
+  isolation: isolate;
+}
+.voice-call-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: .45;
+  background:
+    radial-gradient(circle at 50% 37%, rgba(72, 137, 255, .3), transparent 30%),
+    linear-gradient(135deg, transparent 0 48%, rgba(255,255,255,.04) 48% 49%, transparent 49% 100%);
+  pointer-events: none;
+}
+.voice-call-caption {
+  font-size: clamp(24px, 6.8vw, 32px);
+}
+.call-wave span {
+  width: 5px;
+  min-height: 10px;
+  border-radius: 999px;
+  background: #9db9ed;
+  opacity: .72;
+  transform: scaleY(.6);
+  transform-origin: center;
+}
+.call-wave-active span {
+  background: #67e8f9;
+  animation: call-wave 1.05s ease-in-out infinite;
+}
+.call-wave-active span:nth-child(2n) { animation-delay: .12s; }
+.call-wave-active span:nth-child(3n) { animation-delay: .24s; }
+.call-wave-active span:nth-child(4n) { animation-delay: .36s; }
+@keyframes call-wave {
+  0%, 100% { transform: scaleY(.35); opacity: .42; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+@keyframes call-modal-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .map-surface {
   background:
     linear-gradient(30deg, transparent 0 38%, rgba(255,255,255,.62) 38% 39%, transparent 39% 100%),

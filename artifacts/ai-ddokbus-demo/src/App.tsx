@@ -26,6 +26,7 @@ import {
   MoreHorizontal,
   Navigation,
   Phone,
+  PhoneOff,
   Radio,
   RefreshCw,
   Search,
@@ -81,6 +82,8 @@ type SpeechWindow = Window & {
 
 type UserFlow = 'idle' | 'listening' | 'confirm' | 'booked' | 'payment';
 type PaymentMethod = 'cash' | 'app';
+type CallStage = 'intro' | 'listening' | 'confirm' | 'approval';
+type ListeningPurpose = 'destination' | 'approval';
 
 function Home() {
   const [mode, setMode] = useState<'user' | 'admin'>('user');
@@ -95,7 +98,26 @@ function Home() {
   const [period, setPeriod] = useState('오늘');
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'handoff'>('all');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [isCallOpen, setIsCallOpen] = useState(false);
+  const [callStage, setCallStage] = useState<CallStage>('intro');
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const activeCallRef = useRef(false);
+  const callSessionRef = useRef(0);
+  const callTimersRef = useRef<number[]>([]);
+
+  const clearCallTimers = () => {
+    callTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    callTimersRef.current = [];
+  };
+
+  const scheduleForCall = (callback: () => void, delay: number, session: number) => {
+    const timer = window.setTimeout(() => {
+      callTimersRef.current = callTimersRef.current.filter((item) => item !== timer);
+      if (!activeCallRef.current || callSessionRef.current !== session) return;
+      callback();
+    }, delay);
+    callTimersRef.current.push(timer);
+  };
 
   useEffect(() => {
     if (!isReading) return;
@@ -110,31 +132,79 @@ function Home() {
   }, [notice]);
 
   useEffect(() => {
+    if (!isCallOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isCallOpen]);
+
+  useEffect(() => {
+    return () => {
+      activeCallRef.current = false;
+      callSessionRef.current += 1;
+      clearCallTimers();
       recognitionRef.current?.abort();
+      window.speechSynthesis?.cancel();
     };
   }, []);
 
-  const startListening = () => {
+  const speakKorean = (text: string, onEnd?: () => void) => {
+    if (!('speechSynthesis' in window)) {
+      onEnd?.();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ko-KR';
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      onEnd?.();
+    };
+    utterance.onend = finish;
+    utterance.onerror = (event) => {
+      if (event.error !== 'canceled' && event.error !== 'interrupted') finish();
+    };
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const startListening = (purpose: ListeningPurpose = 'destination', session = callSessionRef.current) => {
+    if (!activeCallRef.current || callSessionRef.current !== session) return;
     const SpeechRecognition =
       (window as SpeechWindow).SpeechRecognition ??
       (window as SpeechWindow).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       setNotice('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome에서 다시 시도해 주세요.');
+      setCallStage(purpose === 'approval' ? 'confirm' : 'intro');
       return;
     }
 
     const recognition = new SpeechRecognition();
+    let completedResult = false;
     recognition.lang = 'ko-KR';
     recognition.interimResults = true;
     recognition.continuous = false;
     recognition.onstart = () => {
-      setTranscript('');
-      setFinalTranscript('');
+      if (completedResult) return;
+      if (!activeCallRef.current || callSessionRef.current !== session) {
+        recognition.abort();
+        return;
+      }
+      if (purpose === 'destination') {
+        setTranscript('');
+        setFinalTranscript('');
+      }
       setFlow('listening');
+      setCallStage(purpose === 'approval' ? 'approval' : 'listening');
     };
     recognition.onresult = (event) => {
+      if (!activeCallRef.current || callSessionRef.current !== session) return;
       let liveText = '';
       let completedText = '';
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -144,15 +214,43 @@ function Home() {
       }
       if (liveText.trim()) setTranscript(liveText.trim());
       if (completedText.trim()) {
-        const spokenDestination = completedText.trim();
+        completedResult = true;
+        const spokenText = completedText.trim();
+        if (purpose === 'approval') {
+          if (/^(응|네|예|그래|좋아요|맞아요|호출해줘|호출해주세요)[.!? ]*$/i.test(spokenText)) {
+            confirmBooking();
+          } else {
+            setNotice('호출하려면 “네” 또는 “응”이라고 말씀해 주세요.');
+            setFlow('confirm');
+            setCallStage('confirm');
+            speakKorean('잘 듣지 못했어요. 호출하려면 네 또는 응이라고 말씀해 주세요.', () => {
+              scheduleForCall(() => startListening('approval', session), 350, session);
+            });
+          }
+          recognition.stop();
+          return;
+        }
+        const spokenDestination = spokenText;
         setFinalTranscript(spokenDestination);
         setTranscript(spokenDestination);
         setFlow('confirm');
-        setNotice('목적지를 확인했습니다. AI가 배차 정보를 준비했습니다.');
+        setCallStage('confirm');
+        const destination = extractDestination(spokenDestination);
         recognition.stop();
+        scheduleForCall(() => {
+          speakKorean(
+            `동남메리트아파트에서 ${destination}까지, 1명 호출할까요?`,
+            () => {
+              if (!activeCallRef.current || callSessionRef.current !== session) return;
+              setCallStage('approval');
+              scheduleForCall(() => startListening('approval', session), 350, session);
+            },
+          );
+        }, 180, session);
       }
     };
     recognition.onerror = (event) => {
+      if (!activeCallRef.current || callSessionRef.current !== session) return;
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         setNotice('마이크 권한이 거부되었습니다. 브라우저 주소창에서 마이크 권한을 허용해 주세요.');
       } else if (event.error === 'audio-capture') {
@@ -161,8 +259,10 @@ function Home() {
         setNotice('음성을 인식하지 못했습니다. 한 번 더 또박또박 말씀해 주세요.');
       }
       setFlow('idle');
+      setCallStage(purpose === 'approval' ? 'confirm' : 'intro');
     };
     recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
       setFlow((current) => (current === 'listening' ? 'idle' : current));
       recognitionRef.current = null;
     };
@@ -174,22 +274,75 @@ function Home() {
     } catch {
       setNotice('마이크를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.');
       setFlow('idle');
+      setCallStage(purpose === 'approval' ? 'confirm' : 'intro');
+      if (recognitionRef.current === recognition) recognitionRef.current = null;
     }
   };
 
   const stopListening = () => {
     recognitionRef.current?.stop();
     setFlow('idle');
+    if (isCallOpen) setCallStage(callStage === 'approval' ? 'approval' : 'intro');
   };
 
   const retryListening = () => {
     setFlow('idle');
     setTranscript('');
     setFinalTranscript('');
-    window.setTimeout(startListening, 80);
+    restartCallMic();
+  };
+
+  const openVoiceCall = () => {
+    clearCallTimers();
+    const session = callSessionRef.current + 1;
+    callSessionRef.current = session;
+    activeCallRef.current = true;
+    recognitionRef.current?.abort();
+    window.speechSynthesis?.cancel();
+    setTranscript('');
+    setFinalTranscript('');
+    setFlow('idle');
+    setCallStage('intro');
+    setIsCallOpen(true);
+    speakKorean('반갑습니다. 화성시 AI 똑버스입니다. 어디로 가시나요?', () => {
+      scheduleForCall(() => startListening('destination', session), 350, session);
+    });
+  };
+
+  const closeVoiceCall = () => {
+    activeCallRef.current = false;
+    callSessionRef.current += 1;
+    clearCallTimers();
+    recognitionRef.current?.abort();
+    window.speechSynthesis?.cancel();
+    setIsCallOpen(false);
+    setCallStage('intro');
+    setFlow('idle');
+    setTranscript('');
+    setFinalTranscript('');
+  };
+
+  const restartCallMic = () => {
+    clearCallTimers();
+    const session = callSessionRef.current + 1;
+    callSessionRef.current = session;
+    activeCallRef.current = true;
+    recognitionRef.current?.abort();
+    window.speechSynthesis?.cancel();
+    setFlow('idle');
+    const purpose = callStage === 'confirm' || callStage === 'approval' ? 'approval' : 'destination';
+    setCallStage(purpose === 'approval' ? 'approval' : 'listening');
+    scheduleForCall(() => startListening(purpose, session), 80, session);
   };
 
   const confirmBooking = () => {
+    activeCallRef.current = false;
+    callSessionRef.current += 1;
+    clearCallTimers();
+    recognitionRef.current?.abort();
+    window.speechSynthesis?.cancel();
+    setIsCallOpen(false);
+    setCallStage('intro');
     setFlow('booked');
     setNotice('차량을 찾았습니다. 9분 후 탑승할 수 있습니다.');
   };
@@ -199,8 +352,14 @@ function Home() {
   };
 
   const resetUserFlow = () => {
+    activeCallRef.current = false;
+    callSessionRef.current += 1;
+    clearCallTimers();
     recognitionRef.current?.abort();
+    window.speechSynthesis?.cancel();
+    setIsCallOpen(false);
     setFlow('idle');
+    setCallStage('intro');
     setTranscript('');
     setFinalTranscript('');
     setPaymentMethod('cash');
@@ -357,7 +516,7 @@ function Home() {
               paymentMethod={paymentMethod}
               isReading={isReading}
               agentConnected={agentConnected}
-              onStartListening={startListening}
+              onStartListening={openVoiceCall}
               onStopListening={stopListening}
               onRetry={retryListening}
               onConfirm={confirmBooking}
@@ -388,6 +547,17 @@ function Home() {
           <Check size={17} className="shrink-0 text-[hsl(var(--sidebar-primary))]" />
           <span>{notice}</span>
         </div>
+      )}
+
+      {isCallOpen && (
+        <VoiceCallModal
+          stage={callStage}
+          transcript={transcript}
+          finalTranscript={finalTranscript}
+          onEnd={closeVoiceCall}
+          onRestart={restartCallMic}
+          onApprove={confirmBooking}
+        />
       )}
 
       {interventionOpen && <InterventionDialog onClose={() => setInterventionOpen(false)} onConnect={connectAgent} />}
@@ -532,7 +702,7 @@ function UserMode({
             {flow === 'payment' ? (
               <PaymentPanel paymentMethod={paymentMethod} onChange={onPaymentChange} onFinish={onFinish} onBack={onBackBooking} />
             ) : flow === 'booked' ? (
-              <BookingPanel onNext={onNextPayment} onReset={onReset} />
+              <BookingPanel destination={extractDestination(finalTranscript)} onNext={onNextPayment} onReset={onReset} />
             ) : (
               <>
                 <div className="rounded-2xl border-2 border-[#2563eb]/75 bg-white p-3.5 shadow-[0_5px_16px_rgba(37,99,235,.08)]">
@@ -706,6 +876,143 @@ function VoiceConversation({
   );
 }
 
+function VoiceCallModal({
+  stage,
+  transcript,
+  finalTranscript,
+  onEnd,
+  onRestart,
+  onApprove,
+}: {
+  stage: CallStage;
+  transcript: string;
+  finalTranscript: string;
+  onEnd: () => void;
+  onRestart: () => void;
+  onApprove: () => void;
+}) {
+  const destination = extractDestination(finalTranscript || transcript);
+  const isListening = stage === 'listening' || stage === 'approval';
+  const isApproval = stage === 'approval';
+  const stageLabel = stage === 'intro'
+    ? 'AI 안내 중'
+    : stage === 'confirm'
+      ? '목적지 확인 중'
+      : isApproval
+        ? '호출 여부를 확인 중'
+        : '듣고 있는 중';
+
+  return (
+    <div className="voice-call-modal fixed inset-0 z-[80] flex items-stretch justify-center bg-[#071b46]/90 p-0 sm:items-center sm:p-5">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="voice-call-title"
+        className="voice-call-panel relative flex min-h-[100dvh] w-full max-w-[560px] flex-col overflow-hidden bg-[linear-gradient(155deg,#0b2b72_0%,#08205a_48%,#06143f_100%)] px-5 pb-6 pt-5 text-white shadow-[0_30px_80px_rgba(2,15,52,.4)] sm:min-h-[720px] sm:rounded-[32px] sm:px-8 sm:pb-8 sm:pt-7"
+      >
+        <div className="flex items-center justify-between text-white/70">
+          <span className="font-mono-display text-[11px] tracking-[.16em]">HWASEONG AI MOBILITY</span>
+          <button
+            type="button"
+            onClick={onEnd}
+            aria-label="통화 화면 닫기"
+            className="rounded-full p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <X size={21} />
+          </button>
+        </div>
+
+        <div className="mt-7 flex flex-col items-center text-center sm:mt-9">
+          <div className="voice-agent-avatar phone-ring flex h-[88px] w-[88px] items-center justify-center rounded-full border-4 border-white/20 bg-[#3e7bff] shadow-[0_14px_30px_rgba(27,86,210,.4)]">
+            <Bot size={42} strokeWidth={1.7} />
+          </div>
+          <p className="mt-5 text-[12px] font-bold tracking-[.14em] text-[#b9d3ff]">AI VOICE ASSISTANT</p>
+          <h2 id="voice-call-title" className="mt-2 text-[25px] font-black tracking-[-.05em] sm:text-[30px]">
+            화성시 AI 똑버스 상담원
+          </h2>
+          <div className="mt-3 flex items-center gap-2 text-[14px] font-bold text-white/70">
+            <span className={`h-2.5 w-2.5 rounded-full ${isListening ? 'bg-[#67e8f9] pulse-dot' : 'bg-[#9db9ed]'}`} />
+            {stageLabel}
+          </div>
+        </div>
+
+        <div className="flex flex-1 flex-col items-center justify-center py-8 text-center sm:py-10">
+          <div className={`call-wave mb-8 flex h-16 items-center justify-center gap-1.5 ${isListening ? 'call-wave-active' : ''}`} aria-label={isListening ? '음성 듣는 중' : 'AI 음성 안내 중'}>
+            {[22, 38, 54, 32, 68, 44, 76, 42, 60, 30, 48, 24].map((height, index) => (
+              <span key={index} style={{ height: `${height}px` }} />
+            ))}
+          </div>
+
+          {stage === 'intro' && (
+            <p className="voice-call-caption max-w-[440px] font-extrabold leading-[1.55] tracking-[-.045em] text-white">
+              반갑습니다.<br />화성시 AI 똑버스입니다.<br />어디로 가시나요?
+            </p>
+          )}
+
+          {stage === 'listening' && (
+            <div className="max-w-[470px]">
+              <p className="text-[17px] font-bold text-[#b9d3ff]">천천히 말씀해 주세요</p>
+              <p className="voice-call-caption mt-4 min-h-[92px] font-black leading-[1.45] tracking-[-.055em] text-white">
+                {transcript || '말씀하신 내용이 여기에 표시됩니다'}
+              </p>
+            </div>
+          )}
+
+          {stage === 'confirm' && (
+            <div className="max-w-[480px]">
+              <p className="text-[16px] font-bold text-[#b9d3ff]">잘 들었어요</p>
+              <p className="voice-call-caption mt-4 font-black leading-[1.5] tracking-[-.05em] text-white">
+                동남메리트아파트에서<br />
+                <span className="text-[#7dd3fc]">{destination}</span>까지,<br />
+                1명 호출할까요?
+              </p>
+            </div>
+          )}
+
+          {stage === 'approval' && (
+            <div className="max-w-[480px]">
+              <p className="text-[16px] font-bold text-[#b9d3ff]">호출해도 괜찮을까요?</p>
+              <p className="voice-call-caption mt-4 font-black leading-[1.5] tracking-[-.05em] text-white">
+                “네” 또는 “응”이라고<br />말씀해 주세요
+              </p>
+              <p className="mt-4 text-[15px] font-semibold text-white/60">아래 버튼을 눌러 바로 호출할 수도 있어요</p>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-white/15 pt-5">
+          {(stage === 'confirm' || stage === 'approval') && (
+            <button
+              type="button"
+              onClick={onApprove}
+              className="mb-4 flex min-h-[58px] w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[18px] font-black text-[#16449e] shadow-[0_10px_24px_rgba(0,0,0,.16)] transition-transform hover:-translate-y-0.5"
+            >
+              <Check size={21} strokeWidth={3} /> 호출 확인
+            </button>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={onEnd}
+              className="flex min-h-[58px] items-center justify-center gap-2 rounded-2xl bg-[#ef4444] px-3 text-[16px] font-extrabold text-white shadow-[0_8px_18px_rgba(239,68,68,.22)] transition-colors hover:bg-[#dc2626]"
+            >
+              <PhoneOff size={20} /> 통화 종료
+            </button>
+            <button
+              type="button"
+              onClick={onRestart}
+              className="flex min-h-[58px] items-center justify-center gap-2 rounded-2xl bg-white/13 px-3 text-[16px] font-extrabold text-white ring-1 ring-inset ring-white/25 transition-colors hover:bg-white/20"
+            >
+              <Mic size={20} /> 마이크 재실행
+            </button>
+          </div>
+          <p className="mt-4 text-center text-[12px] font-semibold text-white/45">음성 안내 속도는 어르신이 듣기 편하도록 천천히 설정되어 있습니다</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function extractDestination(spokenText: string) {
   const fallback = '메가MGC커피 화성봉담2지구점';
   if (!spokenText.trim()) return fallback;
@@ -716,12 +1023,12 @@ function extractDestination(spokenText: string) {
   return cleaned || fallback;
 }
 
-function BookingPanel({ onNext, onReset }: { onNext: () => void; onReset: () => void }) {
+function BookingPanel({ destination, onNext, onReset }: { destination: string; onNext: () => void; onReset: () => void }) {
   return (
     <div className="booking-panel rise-in">
       <div className="mb-3 flex items-center gap-2 text-[13px] font-extrabold text-emerald-600"><Check size={17} /> 배차가 확정되었습니다</div>
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between text-[13px] font-bold text-slate-500"><span>동남메리트아파트</span><ArrowRight size={15} className="text-[#2563eb]" /><span>메가MGC커피</span></div>
+        <div className="flex items-center justify-between gap-2 text-[13px] font-bold text-slate-500"><span>동남메리트아파트</span><ArrowRight size={15} className="shrink-0 text-[#2563eb]" /><span className="max-w-[130px] truncate text-right">{destination}</span></div>
         <div className="mt-4 flex items-end justify-between">
           <div><p className="text-[28px] font-black tracking-[-.06em] text-slate-900">9분 후 탑승</p><p className="mt-1 text-[13px] font-semibold text-slate-500">예상 요금 · <span className="text-slate-800">1,650원</span></p></div>
           <div className="bus-mini-icon"><CarFront size={25} /></div>
