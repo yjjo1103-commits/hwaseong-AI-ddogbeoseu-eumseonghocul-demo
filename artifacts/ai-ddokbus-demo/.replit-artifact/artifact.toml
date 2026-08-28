@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "화성 AI 똑버스 음성호출 데모"
+description = "화성특례시의 고령자와 교통약자를 위한 AI 음성 기반 똑버스 호출 및 관제 시연용 웹 데모입니다. 사용자 호출 흐름과 관리자 AI 관제 대시보드를 한 화면에서 전환해 보여줍니다."
+version = "1.0.0"
+id = "artifacts/ai-ddokbus-demo"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24839
+
+[services.development]
+run = "pnpm --filter @workspace/ai-ddokbus-demo run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ai-ddokbus-demo", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/ai-ddokbus-demo/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24839"
+BASE_PATH = "/"
