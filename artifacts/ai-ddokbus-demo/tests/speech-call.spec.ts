@@ -298,6 +298,113 @@ test.describe('browser voice call', () => {
     await expect(callDialog).toContainText('AI 안내 중');
     await expect(callDialog).not.toContainText('천천히 말씀해 주세요');
   });
+
+  test('recovers from a recognition error with one new listening session', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: '음성으로 목적지 말하기' }).click();
+    await waitForRecognition(page, 1);
+
+    await page.evaluate(() =>
+      (
+        window as Window & {
+          __speechTest: {
+            emitError: (index: number, error: string) => void;
+          };
+        }
+      ).__speechTest.emitError(0, 'no-speech'),
+    );
+
+    await expect(page.getByRole('status')).toHaveText(
+      '음성을 인식하지 못했습니다. 한 번 더 또박또박 말씀해 주세요.',
+    );
+    const callDialog = page.getByRole('dialog', {
+      name: '화성시 AI 똑버스 상담원',
+    });
+    await expect(callDialog).toContainText('AI 안내 중');
+    await expect(callDialog).not.toContainText('천천히 말씀해 주세요');
+
+    await page.getByRole('button', { name: '마이크 재실행' }).click();
+    await waitForRecognition(page, 2);
+    await expect(callDialog).toContainText('천천히 말씀해 주세요');
+
+    const retrySnapshot = await page.evaluate(
+      () =>
+        (
+          window as Window & {
+            __speechTest: {
+              snapshot: () => {
+                recognitionCount: number;
+                startCalls: number[];
+                abortCalls: number[];
+              };
+            };
+          }
+        ).__speechTest.snapshot(),
+    );
+    expect(retrySnapshot.recognitionCount).toBe(2);
+    expect(retrySnapshot.startCalls).toEqual([1, 1]);
+    expect(retrySnapshot.abortCalls[0]).toBeGreaterThan(0);
+
+    await emitResult(page, 1, '메가MGC커피 봉담점 가줘');
+    await expect(callDialog).toContainText('호출해도 괜찮을까요?');
+    await waitForRecognition(page, 3);
+
+    const completedSnapshot = await page.evaluate(
+      () =>
+        (
+          window as Window & {
+            __speechTest: {
+              snapshot: () => {
+                recognitionCount: number;
+                startCalls: number[];
+                abortCalls: number[];
+              };
+            };
+          }
+        ).__speechTest.snapshot(),
+    );
+    expect(completedSnapshot.recognitionCount).toBe(3);
+    expect(completedSnapshot.startCalls).toEqual([1, 1, 1]);
+  });
+
+  test('hands off after three general recognition failures', async ({ page }) => {
+    await page.getByRole('button', { name: '음성으로 목적지 말하기' }).click();
+    await waitForRecognition(page, 1);
+
+    const callDialog = page.getByRole('dialog', {
+      name: '화성시 AI 똑버스 상담원',
+    });
+    for (let index = 0; index < 3; index += 1) {
+      await page.evaluate(
+        ({ recognitionIndex }) =>
+          (
+            window as Window & {
+              __speechTest: {
+                emitError: (index: number, error: string) => void;
+              };
+            }
+          ).__speechTest.emitError(recognitionIndex, 'no-speech'),
+        { recognitionIndex: index },
+      );
+      if (index < 2) {
+        await page.getByRole('button', { name: '마이크 재실행' }).click();
+        await waitForRecognition(page, index + 2);
+      }
+    }
+
+    await expect(callDialog).not.toBeVisible();
+    const interventionDialog = page.getByRole('dialog', {
+      name: '상담원 도움이 필요합니다',
+    });
+    await expect(interventionDialog).toBeVisible();
+    await expect(interventionDialog).toContainText('인식 실패 3회');
+    await page.getByRole('button', { name: '상담원 바로 연결' }).click();
+    await expect(interventionDialog).not.toBeVisible();
+    await expect(page.getByRole('status')).toHaveText(
+      '상담원 연결을 요청했습니다. 곧 통화가 이어집니다.',
+    );
+  });
 });
 
 test.describe('unsupported browser guidance', () => {
@@ -325,5 +432,31 @@ test.describe('unsupported browser guidance', () => {
     await expect(callDialog).toContainText('AI 안내 중');
     await expect(callDialog).not.toContainText('천천히 말씀해 주세요');
     await expect(page.getByText('배차가 확정되었습니다')).not.toBeVisible();
+  });
+});
+
+test.describe('administrator recovery', () => {
+  test('connects a failed voice call to a human agent', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '다음 시작 화면' }).click();
+    await page.getByRole('button', { name: '다음' }).click();
+    await page.getByRole('button', { name: '다음' }).click();
+    await page.getByRole('button', { name: '똑버스 시작하기' }).click();
+
+    await page.getByRole('button', { name: '관리자 모드' }).first().click();
+    await expect(page.getByRole('heading', { name: 'AI 관제센터' })).toBeVisible();
+    await page.getByRole('button', { name: '인식 실패 케이스 확인' }).click();
+
+    const dialog = page.getByRole('dialog', {
+      name: '상담원 도움이 필요합니다',
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('인식 실패 3회');
+    await page.getByRole('button', { name: '상담원 바로 연결' }).click();
+
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByRole('status')).toHaveText(
+      '상담원 연결을 요청했습니다. 곧 통화가 이어집니다.',
+    );
   });
 });

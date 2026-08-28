@@ -172,6 +172,7 @@ function Home() {
   const activeCallRef = useRef(false);
   const callSessionRef = useRef(0);
   const callTimersRef = useRef<number[]>([]);
+  const recognitionErrorCountRef = useRef(0);
 
   const clearCallTimers = () => {
     callTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -319,12 +320,28 @@ function Home() {
     };
     recognition.onerror = (event) => {
       if (!activeCallRef.current || callSessionRef.current !== session) return;
+      const isGeneralRecognitionError = !['not-allowed', 'service-not-allowed', 'audio-capture'].includes(event.error);
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         setNotice('마이크 권한이 거부되었습니다. 브라우저 주소창에서 마이크 권한을 허용해 주세요.');
       } else if (event.error === 'audio-capture') {
         setNotice('마이크를 찾을 수 없습니다. 마이크 연결 상태를 확인해 주세요.');
       } else {
         setNotice('음성을 인식하지 못했습니다. 한 번 더 또박또박 말씀해 주세요.');
+      }
+      if (isGeneralRecognitionError) {
+        recognitionErrorCountRef.current += 1;
+        if (recognitionErrorCountRef.current >= 3) {
+          activeCallRef.current = false;
+          callSessionRef.current += 1;
+          clearCallTimers();
+          recognitionRef.current?.abort();
+          window.speechSynthesis?.cancel();
+          setIsCallOpen(false);
+          setCallStage('intro');
+          setFlow('idle');
+          setInterventionOpen(true);
+          return;
+        }
       }
       setFlow('idle');
       setCallStage(purpose === 'approval' ? 'confirm' : 'intro');
@@ -365,6 +382,7 @@ function Home() {
     const session = callSessionRef.current + 1;
     callSessionRef.current = session;
     activeCallRef.current = true;
+    recognitionErrorCountRef.current = 0;
     recognitionRef.current?.abort();
     window.speechSynthesis?.cancel();
     setTranscript('');
@@ -388,6 +406,7 @@ function Home() {
     setFlow('idle');
     setTranscript('');
     setFinalTranscript('');
+    recognitionErrorCountRef.current = 0;
   };
 
   const restartCallMic = () => {
@@ -413,6 +432,7 @@ function Home() {
     setCallStage('intro');
     setFlow('booked');
     setNotice('차량을 찾았습니다. 9분 후 탑승할 수 있습니다.');
+    recognitionErrorCountRef.current = 0;
   };
 
   const goBackToBooking = () => {
@@ -431,6 +451,7 @@ function Home() {
     setTranscript('');
     setFinalTranscript('');
     setPaymentMethod('cash');
+    recognitionErrorCountRef.current = 0;
   };
 
   const connectAgent = () => {
